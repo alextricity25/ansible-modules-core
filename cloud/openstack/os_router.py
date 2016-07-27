@@ -215,7 +215,8 @@ def _needs_update(cloud, module, router, network, internal_subnet_ids):
     # check internal interfaces
     if module.params['interfaces']:
         existing_subnet_ids = []
-        for port in cloud.list_router_interfaces(router, 'internal'):
+        for port in _disregard_ha_ports(
+                    cloud.list_router_interfaces(router, 'internal')):
             if 'fixed_ips' in port:
                 for fixed_ip in port['fixed_ips']:
                     existing_subnet_ids.append(fixed_ip['subnet_id'])
@@ -283,6 +284,12 @@ def _validate_subnets(module, cloud):
             internal_subnet_ids.append(subnet['id'])
 
     return external_subnet_ids, internal_subnet_ids
+
+def _disregard_ha_ports(ports):
+   """Remove the HA ports from the ports list"""
+   ports[:] = [ port for port in ports
+                if port.get('device_owner') != 'network:router_ha_interface']
+   return ports
 
 
 def main():
@@ -371,7 +378,8 @@ def main():
                     # just detach all existing internal interfaces and attach the new.
                     elif internal_ids:
                         router = updated_router
-                        ports = cloud.list_router_interfaces(router, 'internal')
+                        ports = _disregard_ha_ports(
+                                cloud.list_router_interfaces(router, 'internal'))
                         for port in ports:
                             cloud.remove_router_interface(router, port_id=port['id'])
                         for internal_subnet_id in internal_ids:
@@ -388,7 +396,8 @@ def main():
             else:
                 # We need to detach all internal interfaces on a router before
                 # we will be allowed to delete it.
-                ports = cloud.list_router_interfaces(router, 'internal')
+                ports = _disregard_ha_ports(
+                        cloud.list_router_interfaces(router, 'internal'))
                 router_id = router['id']
                 for port in ports:
                     cloud.remove_router_interface(router, port_id=port['id'])
